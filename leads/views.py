@@ -6,6 +6,7 @@ from django.http import HttpResponse
 from .models import Lead, Agent
 from .forms import LeadForm, LeadModelForm, CustomUserCreationForm
 from django.views import generic # TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
+from agents.mixins import OrganizerAndLoginRequiredMixin
 
 # The below line called Acronym
 # CRUD+L - Create, Retrieve, Update and Delete + List
@@ -30,8 +31,38 @@ class LandingPageView(generic.TemplateView):
 
 class LeadListView(LoginRequiredMixin, generic.ListView):
     template_name = 'leads/lead_list.html'
-    queryset = Lead.objects.all()
     context_object_name = 'leads'
+
+    def get_queryset(self):
+        user = self.request.user
+        # Initial queryset of leads for the intire organization
+        if user.is_organizer:
+            queryset = Lead.objects.filter(
+                organization=user.userprofile, 
+                agent__isnull=False
+            )
+        else:
+            queryset = Lead.objects.filter(
+                organization=user.agent.organization,
+                agent__isnull=False
+            )
+            # Filter for the agent that is logged in
+            queryset = queryset.filter(agent__user=user)
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super(LeadListView, self).get_context_data(**kwargs)
+        user = self.request.user
+        if user.is_organizer:
+            queryset = Lead.objects.filter(
+                organization=user.userprofile, 
+                agent__isnull=True
+            )
+            context.update({
+                'unassigned_leads': queryset
+            })
+        return context
+    
 
 
 # def lead_list(request):
@@ -42,10 +73,20 @@ class LeadListView(LoginRequiredMixin, generic.ListView):
 #     return render(request, "leads/lead_list.html", context)
 
 
-class LeadDetailView(LoginRequiredMixin, generic.DetailView):
+class LeadDetailView(OrganizerAndLoginRequiredMixin, generic.DetailView):
     template_name = 'leads/lead_detail.html'
-    queryset = Lead.objects.all()
     context_object_name = 'lead'
+
+    def get_queryset(self):
+        user = self.request.user
+        # Initial queryset of leads for the intire organization
+        if user.is_organizer:
+            queryset = Lead.objects.filter(organization=user.userprofile)
+        else:
+            queryset = Lead.objects.filter(organization=user.agent.organization)
+            # Filter for the agent that is logged in
+            queryset = queryset.filter(agent__user=user)
+        return queryset
 
 
 # def lead_detail(request, pk):
@@ -56,7 +97,7 @@ class LeadDetailView(LoginRequiredMixin, generic.DetailView):
 #     return render(request, "leads/lead_detail.html", context)
 
 
-class LeadCreateView(LoginRequiredMixin, generic.CreateView):
+class LeadCreateView(OrganizerAndLoginRequiredMixin, generic.CreateView):
     template_name = 'leads/lead_create.html'
     form_class = LeadModelForm
 
@@ -90,11 +131,15 @@ class LeadCreateView(LoginRequiredMixin, generic.CreateView):
 #     return render(request, "leads/lead_create.html", context)
 
 
-class LeadUpdateView(LoginRequiredMixin, generic.UpdateView):
+class LeadUpdateView(OrganizerAndLoginRequiredMixin, generic.UpdateView):
     template_name = 'leads/lead_update.html'
-    queryset = Lead.objects.all()
     form_class = LeadModelForm
 
+    def get_queryset(self):
+        user = self.request.user
+        # Initial queryset of leads for the intire organization
+        return Lead.objects.filter(organization=user.userprofile)
+        
     def get_success_url(self):
         return reverse("leads:lead-list")
 
@@ -122,6 +167,11 @@ class LeadDeleteView(LoginRequiredMixin, generic.DeleteView):
 
     def get_success_url(self):
         return reverse("leads:lead-list")
+
+    def get_queryset(self):
+        user = self.request.user
+        # Initial queryset of leads for the intire organization
+        return Lead.objects.filter(organization=user.userprofile)
 
 
 # def lead_delete(request, pk):
@@ -174,6 +224,8 @@ class LeadDeleteView(LoginRequiredMixin, generic.DeleteView):
 #     }
 #     return render(request, "leads/lead_create.html", context)
 
+
+# https://youtu.be/fOukA4Qh9QA?t=23506
 
 
 
